@@ -145,7 +145,64 @@ namespace Zomp.SyncMethodGenerator.IntegrationTests
     }
 }
 """.Verify(sourceType: SourceType.Full);
+
+    [Fact]
+    public Task EntityFrameworkQueryableToListAsync() => """
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Zomp.SyncMethodGenerator.IntegrationTests
+{
+    using Microsoft.EntityFrameworkCore;
+
+    public partial class EntityFrameworkQueryableExtensions
+    {
+        [Zomp.SyncMethodGenerator.CreateSyncVersion]
+        public async Task<int> QueryableToListAsync(DbContext dbContext, CancellationToken cancellationToken)
+        {
+            var dbSet = dbContext.Set<object>();
+            var result = await dbSet.ToListAsync(cancellationToken);
+            return result.Count;
+        }
+    }
+}
+""".Verify(sourceType: SourceType.Full);
 #endif
+
+    [Fact]
+    public Task QueryableExtensionsKeepTheirOwnSyncMethod() => """
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Zomp.SyncMethodGenerator.IntegrationTests
+{
+    using Custom;
+
+    partial class Caller
+    {
+        [Zomp.SyncMethodGenerator.CreateSyncVersion]
+        public async Task<int> CallAsync(IQueryable<object> source, CancellationToken ct)
+        {
+            return await source.CountAsync(ct);
+        }
+    }
+}
+
+namespace Custom
+{
+    using System.Linq;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    public static class DocumentQueryableExtensions
+    {
+        public static Task<int> CountAsync<T>(this IQueryable<T> source, CancellationToken ct) => Task.FromResult(0);
+
+        public static int Count<T>(this IQueryable<T> source) => 0;
+    }
+}
+""".Verify(sourceType: SourceType.Full);
 
 #if NET8_0_OR_GREATER
     [Fact]

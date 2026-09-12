@@ -94,6 +94,7 @@ internal sealed class AsyncToSyncRewriter(SemanticModel semanticModel, bool disa
     private readonly ImmutableArray<ReportedDiagnostic>.Builder diagnostics = ImmutableArray.CreateBuilder<ReportedDiagnostic>();
     private readonly Stack<ExpressionSyntax> replaceInInvocation = new();
     private bool yielding;
+    private (ISet<string> EnumerableMembers, ISet<string> QueryableMembers)? linqMembers;
     private bool droppingAsync;
     private bool callingSpanProperty;
 
@@ -1516,7 +1517,6 @@ internal sealed class AsyncToSyncRewriter(SemanticModel semanticModel, bool disa
         => symbol switch
         {
             INamedTypeSymbol { Name: "AsyncEnumerable" } => Global("System.Linq.Enumerable"),
-            INamedTypeSymbol { Name: "EntityFrameworkQueryableExtensions" } => Global("System.Linq.Queryable"),
             INamedTypeSymbol => symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             _ => symbol.Name,
         };
@@ -2067,19 +2067,24 @@ internal sealed class AsyncToSyncRewriter(SemanticModel semanticModel, bool disa
         var newName = reducedFrom.Name;
         newName = changeMemoryToSpan ? ReplaceWithSpan(reducedFrom) : RemoveAsync(newName);
 
-        var membersWithNewNameInContainingType = semanticModel.Compilation.References
-            .Select(semanticModel.Compilation.GetAssemblyOrModuleSymbol)
-            .Append(semanticModel.Compilation.Assembly)
-            .OfType<IAssemblySymbol>()
-            .Select(assemblySymbol => assemblySymbol.GetTypeByMetadataName(containingType.ToString()))
-            .OfType<INamedTypeSymbol>()
-            .SelectMany(symbol => symbol.GetMembers(newName));
+        var fullyQualifiedName = $"{MakeType(containingType)}.{newName}";
 
-        // When the method is an AsyncEnumerable extension it must be converted to the corresponding Enumerable extension
-        // regardless of the containing type featuring members with compatible names
-        var fullyQualifiedName = !containingType.Name.Equals("AsyncEnumerable", StringComparison.Ordinal) && membersWithNewNameInContainingType.Any()
-            ? $"{containingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{newName}"
-            : $"{MakeType(containingType)}.{newName}";
+        // Supports EntityFrameworkQueryableExtensions and potentially other queryable extensions.
+        // A sync counterpart declared beside the async method wins, as EF Core's ExecuteDelete does.
+        if (containingType.Name.EndsWith("QueryableExtensions", StringComparison.Ordinal)
+            && containingType.GetMembers(newName).IsEmpty)
+        {
+            var (enumerableMembers, queryableMembers) = linqMembers ??= semanticModel.Compilation.GetLinqMembers();
+
+            if (queryableMembers.Contains(newName))
+            {
+                fullyQualifiedName = $"{Global("System.Linq.Queryable")}.{newName}";
+            }
+            else if (enumerableMembers.Contains(newName))
+            {
+                fullyQualifiedName = $"{Global("System.Linq.Enumerable")}.{newName}";
+            }
+        }
 
         var es = (ies.Expression switch
         {
