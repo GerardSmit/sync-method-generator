@@ -1547,10 +1547,10 @@ internal sealed class AsyncToSyncRewriter(SemanticModel semanticModel, bool disa
         {
             var index = extraParameterGroup.Key;
 
-            if (extraParameterGroup.Value.IsNewStatements)
+            if (extraParameterGroup.Value.Value is List<StatementSyntax> newStatements)
             {
                 separatedItems = separatedItems.RemoveAt(index);
-                foreach (var extraParameter in extraParameterGroup.Value.AsNewStatements)
+                foreach (var extraParameter in newStatements)
                 {
                     if (createNewListItem(extraParameter) is not { } newItem)
                     {
