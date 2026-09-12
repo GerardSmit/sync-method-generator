@@ -2,5 +2,8 @@
 while (true)
 {
     global::System.Threading.Thread.Sleep(120000);
-    while (true) break;
+    if (global::System.Environment.TickCount > 0)
+    {
+        return;
+    }
 }

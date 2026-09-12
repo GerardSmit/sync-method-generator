@@ -27,7 +27,7 @@ if (((!((ct.IsCancellationRequested)))))
 """.Verify(sourceType: SourceType.MethodBody);
 
     [Fact]
-    public Task WhileNotCancelledThrow() => $$"""
+    public Task WhileNotCancelledThenThrow() => """
 while (!ct.IsCancellationRequested)
 {
     await Task.Delay(120000, ct);
@@ -37,43 +37,96 @@ throw new OperationCanceledException();
 """.Verify(sourceType: SourceType.MethodBody);
 
     [Fact]
-    public Task WhileNotCancelledBreakThrow() => $$"""
+    public Task WhileNotCancelledChecksInside() => """
 while (!ct.IsCancellationRequested)
 {
     await Task.Delay(120000, ct);
-    break;
+    if (ct.IsCancellationRequested)
+    {
+        break;
+    }
 }
 
-throw new OperationCanceledException();
+Console.WriteLine("Stopped");
 """.Verify(sourceType: SourceType.MethodBody);
 
     [Fact]
-    public Task WhileNotCancelledInvalidBreakThrow() => $$"""
+    public Task WhileNotCancelledReturns() => """
 while (!ct.IsCancellationRequested)
 {
     await Task.Delay(120000, ct);
-    while (true) break;
+    if (Environment.TickCount > 0)
+    {
+        return;
+    }
 }
 
-throw new OperationCanceledException();
+Console.WriteLine("Stopped");
 """.Verify(sourceType: SourceType.MethodBody);
 
-#if NET6_0_OR_GREATER
+    [Fact]
+    public Task WhileNotCancelledBreaks() => """
+while (!ct.IsCancellationRequested)
+{
+    await Task.Delay(120000, ct);
+    if (Environment.TickCount > 0)
+    {
+        break;
+    }
+}
+
+Console.WriteLine("Stopped");
+""".Verify(sourceType: SourceType.MethodBody);
 
     [Fact]
-    public Task WhileCancelled() => $$"""
-[System.Diagnostics.CodeAnalysis.DoesNotReturn]
-public void ThrowError() => throw new Exception();
+    public Task BreakInsideSwitchStaysInLoop() => """
+while (!ct.IsCancellationRequested)
+{
+    await Task.Delay(120000, ct);
+    switch (Environment.TickCount)
+    {
+        case 0:
+            break;
+    }
+}
+""".Verify(sourceType: SourceType.MethodBody);
 
-[Zomp.SyncMethodGenerator.CreateSyncVersion]
-public async Task CallProgressMethodAsync(CancellationToken ct)
+    [Fact]
+    public Task WhileNotCancelledNeverReturns() => """
+[CreateSyncVersion]
+async Task MethodAsync(CancellationToken ct)
 {
     while (!ct.IsCancellationRequested)
     {
-        ThrowError();
+        await Task.Delay(120000, ct);
+        if (Environment.TickCount > 0)
+        {
+            Fail();
+        }
     }
 }
+
+[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+static void Fail() => throw new InvalidOperationException();
 """.Verify();
 
+    [Fact]
+    public Task WhileTrueWrittenByHand() => """
+while (true)
+{
+    await Task.Delay(120000, ct);
+}
+""".Verify(sourceType: SourceType.MethodBody);
+
+    [Fact]
+    public Task WhileNotCancelledReplacedBySyncOnly() => """
+#if SYNC_ONLY
+System.Threading.Thread.Sleep(120000);
+#else
+while (!ct.IsCancellationRequested)
+{
+    await Task.Delay(120000, ct);
+}
 #endif
+""".Verify(sourceType: SourceType.MethodBody);
 }

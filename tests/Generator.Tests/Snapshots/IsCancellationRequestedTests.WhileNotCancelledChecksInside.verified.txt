@@ -2,7 +2,7 @@
   Diagnostics: [
     {
       Location: : (6,8)-(6,13),
-      Message: The synchronized loop never ends. Its condition '((!((ct.IsCancellationRequested))))' becomes 'true' without a CancellationToken, and nothing else leaves the loop. Provide a synchronous implementation in an #if SYNC_ONLY region.,
+      Message: The synchronized loop never ends. Its condition '!ct.IsCancellationRequested' becomes 'true' without a CancellationToken, and nothing else leaves the loop. Provide a synchronous implementation in an #if SYNC_ONLY region.,
       Severity: Warning,
       WarningLevel: 1,
       Descriptor: {
